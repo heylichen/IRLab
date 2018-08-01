@@ -4,6 +4,7 @@ import java.io.File;
 import java.nio.charset.Charset;
 import java.util.Comparator;
 
+import com.alibaba.fastjson.JSONObject;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -19,6 +20,15 @@ public class SortContext {
 
   private SortOptions options;
   private int bufferSize;
+  private JSONObject details;
+
+  public <V> void setDetails(String key, V value) {
+    details.put(key, value);
+  }
+
+  public <V> V getDetails(String key) {
+    return (V) details.get(key);
+  }
 
   public File getInput() {
     return getOptions().getInput();

@@ -16,19 +16,31 @@ import lombok.Setter;
 public class SortOptions {
 
   private File input;
+  //the input file to sort
   private File output;
+  //the sorted output file
   private File tempDirectory;
-  private long blockBytes;
+  //a directory to put tmp files
+  private long maxBlockBytes;
+  //max memory allocated for one block to sort
+  private boolean gzip;
+  //whether use gzip to compress tmp files
   private Charset charset;
+  //input and output file charset
   private Comparator<String> comparator;
+  //to compare lines in input file
   private String tmpPrefix;
+  //prefix for tmp files
   private String tmpPostfix;
+  //postfix for tmp files
 
-  private SortOptions(File input, File output, File tempDirectory, Charset charset,
-                      Comparator<String> comparator, String tmpPrefix, String tmpPostfix) {
+  private SortOptions(File input, File output, File tempDirectory, long maxBlockBytes, boolean gzip,
+                      Charset charset, Comparator<String> comparator, String tmpPrefix, String tmpPostfix) {
     this.input = input;
     this.output = output;
     this.tempDirectory = tempDirectory;
+    this.maxBlockBytes = maxBlockBytes;
+    this.gzip = gzip;
     this.charset = charset;
     this.comparator = comparator;
     this.tmpPrefix = tmpPrefix;
@@ -49,6 +61,8 @@ public class SortOptions {
     private Comparator<String> comparator;
     private String tmpPrefix;
     private String tmpPostfix;
+    private long maxBlockBytes;
+    private boolean gzip;
 
     private SortOptionsBuilder() {
       setDefaultValues();
@@ -59,6 +73,8 @@ public class SortOptions {
       this.tmpPrefix = "sort_";
       this.tmpPostfix = ".tmp";
       this.charset = StandardCharsets.UTF_8;
+      this.maxBlockBytes = 0;
+      this.gzip = false;
     }
 
     public SortOptionsBuilder input(File input) {
@@ -66,8 +82,18 @@ public class SortOptions {
       return this;
     }
 
+    public SortOptionsBuilder gzip(boolean gzip) {
+      this.gzip = gzip;
+      return this;
+    }
+
     public SortOptionsBuilder output(File output) {
       this.output = output;
+      return this;
+    }
+
+    public SortOptionsBuilder maxBlockBytes(long maxBlockBytes) {
+      this.maxBlockBytes = maxBlockBytes;
       return this;
     }
 
@@ -97,7 +123,8 @@ public class SortOptions {
     }
 
     public SortOptions build() {
-      return new SortOptions(input, output, tmpDirectory, charset, comparator, tmpPrefix, tmpPostfix);
+      return new SortOptions(input, output, tmpDirectory, maxBlockBytes, gzip, charset, comparator, tmpPrefix,
+                             tmpPostfix);
     }
   }
 }

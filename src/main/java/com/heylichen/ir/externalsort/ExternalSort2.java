@@ -7,14 +7,19 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.PriorityQueue;
+import java.util.zip.GZIPInputStream;
+import java.util.zip.GZIPOutputStream;
 
+import com.alibaba.fastjson.JSONObject;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -25,8 +30,7 @@ import lombok.Setter;
  */
 public class ExternalSort2 {
 
-  private float useMemoryRatio = 0.5f;
-  private int maxTmpFiles = 100;
+  private float maxUseMemoryRatio = 0.2f;
 
   private long estimateAvailableMemory() {
     System.gc();
@@ -37,39 +41,33 @@ public class ExternalSort2 {
     return presFreeMemory;
   }
 
-  private long estimateBestSizeOfBlocks(final long sizeOfFile, final long maxMemory, SortOptions options) {
-    if (options.getBlockBytes() > 0) {
-      return options.getBlockBytes();
-    }
+  private long estimateBestSizeOfBlocks(final long maxMemory, SortOptions options) {
     // we don't want to open up much more than maxtmpfiles temporary
     // files, better run
     // out of memory first.
-    long blockSize = (long) (maxMemory * useMemoryRatio);
-    if (blockSize > sizeOfFile) {
-      blockSize = sizeOfFile;
-    }
-    long tmpFiles = sizeOfFile / blockSize + 1;
-    if (tmpFiles > maxTmpFiles) {
-      throw new IllegalArgumentException("exceed max temp files ! max:" + maxTmpFiles + " need: " + tmpFiles);
+    long blockSize = (long) (maxMemory * maxUseMemoryRatio);
+    if (options.getMaxBlockBytes() > 0 && blockSize > options.getMaxBlockBytes()) {
+      blockSize = options.getMaxBlockBytes();
     }
     return blockSize;
   }
 
-  public void sort(SortOptions options) throws IOException {
+  public SortContext sort(SortOptions options) throws IOException {
     //
     SortContext context = new SortContext();
+    context.setDetails(new JSONObject());
     context.setOptions(options);
 
     long availableMemory = estimateAvailableMemory();
-    long inputBytes = context.getInput().length();
-    long blockBytes = estimateBestSizeOfBlocks(inputBytes, availableMemory, options);
+    long blockBytes = estimateBestSizeOfBlocks(availableMemory, options);
     int bufferSize = 1024 * 1024 * 10;
     context.setBufferSize(bufferSize);
 
     //sortAndSave
     List<String> lines = new ArrayList<>();
     List<File> tmpFiles = new ArrayList<>();
-    try (BufferedReader bufferedReader = newBufferedReader(context.getInput(), context.getCharset(), bufferSize)) {
+    try (BufferedReader bufferedReader = newBufferedReader(context.getInput(), context.getCharset(), bufferSize,
+                                                           false)) {
       String line = null;
       long tmpFileBytes = 0;
       while ((line = bufferedReader.readLine()) != null) {
@@ -77,12 +75,6 @@ public class ExternalSort2 {
         lines.add(line + "\n");
         if (tmpFileBytes >= blockBytes) {
           Collections.sort(lines, context.getComparator());
-//          if (tmpFiles.size() == 8) {
-//            List<String> lines1 = Arrays.asList(lines.get(0), lines.get(lines.size() / 2), lines.get(lines.size() - 1));
-//            System.out.println(lines1);
-//            Collections.sort(lines, context.getComparator());
-//            System.out.println(lines1);
-//          }
           File tmpFile = writeTempFile(tmpFiles.size(), lines, context, false);
           tmpFiles.add(tmpFile);
           lines.clear();
@@ -96,12 +88,14 @@ public class ExternalSort2 {
         lines.clear();
       }
     }
+    context.setDetails("tmpFiles", tmpFiles.size());
     //merge files and sort
     PriorityQueue<BufferedLineReader> minPq =
         new PriorityQueue<>(12,
                             (a, b) -> context.getComparator().compare(a.peek(), b.peek()));
     for (File tmpFile : tmpFiles) {
-      minPq.offer(new BufferedLineReader(newBufferedReader(tmpFile, context.getCharset(), bufferSize)));
+      minPq.offer(
+          new BufferedLineReader(newBufferedReader(tmpFile, context.getCharset(), bufferSize, options.isGzip())));
     }
 
     List<String> outputLines = new ArrayList<>();
@@ -120,36 +114,51 @@ public class ExternalSort2 {
       }
       fileBytes += StringSizeEstimator.estimatedSizeOf(line);
       if (fileBytes >= blockBytes) {
-        writeFile(outputFile, outputLines, options.getCharset(), bufferSize, true);
+        writeFile(outputFile, outputLines, options.getCharset(), bufferSize, true, false);
         fileBytes = 0;
         outputLines.clear();
       }
     }
     if (!outputLines.isEmpty()) {
-      writeFile(outputFile, outputLines, options.getCharset(), bufferSize, true);
+      writeFile(outputFile, outputLines, options.getCharset(), bufferSize, true, false);
       outputLines.clear();
     }
+    return context;
   }
 
-  private BufferedReader newBufferedReader(File file, Charset charset, int size) throws IOException {
-    return new BufferedReader(new InputStreamReader(new FileInputStream(file), charset), size);
+  private BufferedReader newBufferedReader(File file, Charset charset, int size, boolean gzip) throws IOException {
+    InputStream in = new FileInputStream(file);
+    if (gzip) {
+      in = new GZIPInputStream(in);
+    }
+    return new BufferedReader(new InputStreamReader(in, charset), size);
   }
 
-  private BufferedWriter newBufferedWriter(File file, Charset charset, int size, boolean append) throws IOException {
-    return new BufferedWriter(new OutputStreamWriter(new FileOutputStream(file, append), charset), size);
+  private BufferedWriter newBufferedWriter(File file, Charset charset, int size, boolean append, boolean gzip)
+      throws IOException {
+    OutputStream os = new FileOutputStream(file, append);
+    if (gzip) {
+      os = new GZIPOutputStream(os);
+    }
+    return new BufferedWriter(new OutputStreamWriter(os, charset), size);
   }
 
   private File writeTempFile(Integer index, List<String> lines, SortContext context, boolean append)
       throws IOException {
     SortOptions options = context.getOptions();
+    String postfix = options.getTmpPostfix();
+    if (options.isGzip()) {
+      postfix += ".gz";
+    }
     File tmpFile =
-        File.createTempFile(options.getTmpPrefix() + index + "_", options.getTmpPostfix(), context.getTempDirectory());
-    return writeFile(tmpFile, lines, context.getCharset(), context.getBufferSize(), append);
+        File.createTempFile(options.getTmpPrefix() + index + "_", postfix, context.getTempDirectory());
+    tmpFile.deleteOnExit();
+    return writeFile(tmpFile, lines, context.getCharset(), context.getBufferSize(), append, options.isGzip());
   }
 
-  private File writeFile(File tmpFile, List<String> lines, Charset charset, int size, boolean append)
+  private File writeFile(File tmpFile, List<String> lines, Charset charset, int size, boolean append, boolean gzip)
       throws IOException {
-    try (BufferedWriter writer = newBufferedWriter(tmpFile, charset, size, append)) {
+    try (BufferedWriter writer = newBufferedWriter(tmpFile, charset, size, append, gzip)) {
       for (String line : lines) {
         writer.write(line);
       }

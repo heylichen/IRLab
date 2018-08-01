@@ -34,9 +34,11 @@ public class ExternalSort2Test {
     File tmpDir = new File("C:\\work\\github\\IRLab\\src\\test\\resources\\com\\heylichen\\ir\\externalsort");
     SortOptions options = SortOptions.builder(input, tmpDir)
         .output(output)
+        .maxBlockBytes(1024 * 1024 * 100)
+        .gzip(false)
         .build();
     long start = System.currentTimeMillis();
-    sort.sort(options);
+    SortContext context = sort.sort(options);
     long end = System.currentTimeMillis();
     System.out.println("using " + (end - start) + " ms");
 
