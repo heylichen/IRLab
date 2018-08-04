@@ -3,7 +3,6 @@ package com.heylichen.ir.booleanretrieval;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONArray;
@@ -36,7 +35,7 @@ public class SimpleInvertIndexerTest {
     List<JSONObject> list = ResourceUtils.readJSONList(path, JSONObject.class);
 
     SimpleInvertIndexer simpleInvertIndexer = new SimpleInvertIndexer();
-    Map<String, Set<String>> tokensToDocIds = simpleInvertIndexer.index(list);
+    Map<Term, List<String>> tokensToDocIds = simpleInvertIndexer.index(list);
     System.out.println(JSON.toJSONString(tokensToDocIds));
   }
 
@@ -47,7 +46,7 @@ public class SimpleInvertIndexerTest {
     List<JSONObject> list = ResourceUtils.readJSONList(path, JSONObject.class);
 
     SimpleInvertIndexer simpleInvertIndexer = new SimpleInvertIndexer();
-    Map<String, Set<String>> tokensToDocIds = simpleInvertIndexer.index(list);
+    Map<Term, List<String>> tokensToDocIds = simpleInvertIndexer.index(list);
     System.out.println(JSON.toJSONString(tokensToDocIds));
   }
 

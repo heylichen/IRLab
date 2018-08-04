@@ -1,5 +1,6 @@
 package com.heylichen.ir.booleanretrieval;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -20,7 +21,7 @@ public class SimpleInvertIndexer {
 
   private Splitter splitter = Splitter.on(" ").trimResults();
 
-  public Map<String, Set<String>> index(List<JSONObject> docs) {
+  public Map<Term, List<String>> index(List<JSONObject> docs) {
     Map<String, List<String>> docIdToTokens = tokenize(docs);
     docIdToTokens = normalize(docIdToTokens);
     return genInvertIndex(docIdToTokens);
@@ -57,7 +58,7 @@ public class SimpleInvertIndexer {
    *
    * @return a Map, key is term, value is the docId list.
    */
-  public Map<String, Set<String>> genInvertIndex(Map<String, List<String>> docIdToTokens) {
+  public Map<Term, List<String>> genInvertIndex(Map<String, List<String>> docIdToTokens) {
     if (docIdToTokens == null || docIdToTokens.isEmpty()) {
       return Collections.emptyMap();
     }
@@ -76,6 +77,11 @@ public class SimpleInvertIndexer {
       }
     }
 
-    return termsToDocIds;
+    Map<Term, List<String>> termMap = new TreeMap<>();
+    for (Map.Entry<String, Set<String>> stringSetEntry : termsToDocIds.entrySet()) {
+      termMap.put(new Term(stringSetEntry.getKey(), stringSetEntry.getValue().size()), new ArrayList<>(stringSetEntry.getValue()));
+    }
+
+    return termMap;
   }
 }
